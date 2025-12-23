@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>0xShell Login</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="main-container">
+        <nav class="sidebar">
+            <ul>
+                <li class="disabled">Feed [LOCKED]</li>
+                <li class="disabled">IRC [OFFLINE]</li>
+                <li class="disabled">Mail [ENCRYPTED]</li>
+                <li class="disabled">Profile</li>
+                <li><a href="https://0xshellaboutpage.netlify.app/">About</a></li>
+            </ul>
+        </nav>
+
+        <div class="terminal-window">
+            <div id="top">
+                <h1>0xShell v1.0</h1>
+            </div>
+            
+            <div id="terminal-output">
+                <div>Welcome to 0xShell. System ready.</div>
+                <div>Type 'help' to view available commands.</div>
+                <br>
+            </div>
+            <div id="terminal-interface" class="terminal-window">
+    </div>
+
+<div id="irc-interface" class="terminal-window hidden">
+    <div id="top">
+        <h1>0xChat [CHANNEL: #shadow_ops]</h1>
+    </div>
+    <div id="chat-output" class="terminal-output">
+        </div>
+    <div class="input-line">
+        <span id="prompt-text">guest@irc > </span>
+        <input class="terminalinput" type="text" id="chatInput" placeholder="You are in read-only mode...">
+    </div>
+</div>
+
+            <div class="input-line">
+                <span id="prompt-text">root@0xshell > </span>
+                <input class="terminalinput" type="text" id="cmdInput" autofocus autocomplete="off">
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
