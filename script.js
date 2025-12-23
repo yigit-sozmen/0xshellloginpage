@@ -1,36 +1,54 @@
-/* -------------------------------------------------------------------------
-   GLOBAL VARIABLES & SETUP
-------------------------------------------------------------------------- */
+/* ==========================================================================
+   GLOBAL VARIABLES & CONFIGURATION
+   ========================================================================== */
 const input = document.getElementById('cmdInput');
 const output = document.getElementById('terminal-output');
 const promptText = document.getElementById('prompt-text');
 
-// Screen Elements for toggling
-const terminalScreen = document.getElementById('terminal-interface');
-const ircScreen = document.getElementById('irc-interface');
+// View Containers (for switching screens)
+const viewTerminal = document.getElementById('view-terminal');
+const viewIrc = document.getElementById('view-irc');
 const chatOutput = document.getElementById('chat-output');
 
-let state = 'SHELL'; // States: SHELL, LOGIN_USER, LOGIN_PASS, REGISTER_USER, REGISTER_PASS
+// Sidebar Elements
+const btnIrc = document.getElementById('btn-irc');
 
-/* -------------------------------------------------------------------------
-   TERMINAL LOGIC (Typing & Commands)
-------------------------------------------------------------------------- */
+// System State
+let state = 'SHELL'; // SHELL, LOGIN_USER, LOGIN_PASS, REGISTER_USER, REGISTER_PASS
+let currentUser = "guest";
+let tempUser = ""; 
 
-// Function to print text to the main terminal
-function print(text, isError = false) {
+// Fake File System Data
+const fileSystem = {
+    "readme.txt": "Welcome to 0xShell v1.0.\nWARNING: Authorized use only.",
+    "targets.list": "192.168.1.45 [VULNERABLE]\n10.0.2.15 [SECURE]\n172.16.0.1 [PENDING]\nYAZAR_ZAFER_BASAR [TERMINATED]",
+    "payload.sh": "#!/bin/bash\nrm -rf / --no-preserve-root",
+    "encrypted.dat": "RW5jcnlwdGVkIERhdGEgLSDoIG5vdCB0b3VjaA==",
+    "notes.txt": "To do: Crack the admin hash."
+};
+
+/* ==========================================================================
+   TERMINAL INPUT HANDLING
+   ========================================================================== */
+
+// Helper: Print to terminal
+function print(text, isError = false, isHtml = false) {
     const div = document.createElement('div');
-    div.textContent = text;
+    if (isHtml) div.innerHTML = text;
+    else div.textContent = text;
+    
     if (isError) div.style.color = 'red';
     output.appendChild(div);
-    output.scrollTop = output.scrollHeight; // Auto-scroll
+    output.scrollTop = output.scrollHeight;
 }
 
-// Listen for "Enter" key in the terminal input
+// Event Listener: Handle "Enter" key
 input.addEventListener('keydown', function(e) {
     if (e.key === 'Enter') {
         const cmd = input.value.trim();
-        // If typing a password, show asterisks in history instead of the text
-        const displayCmd = (state === 'LOGIN_PASS' || state === 'REGISTER_PASS') ? '******' : cmd;
+        
+        // Hide password in history
+        let displayCmd = (state.includes('PASS')) ? '******' : cmd;
         
         print(promptText.textContent + displayCmd); 
         processCommand(cmd);
@@ -38,35 +56,101 @@ input.addEventListener('keydown', function(e) {
     }
 });
 
-function processCommand(cmd) {
-    // 1. NORMAL TERMINAL MODE
+/* ==========================================================================
+   COMMAND PROCESSING
+   ========================================================================== */
+
+function processCommand(rawCmd) {
+    // 1. STANDARD SHELL MODE
     if (state === 'SHELL') {
-        switch (cmd.toLowerCase()) {
+        const args = rawCmd.split(' ');
+        const cmd = args[0].toLowerCase();
+
+        switch (cmd) {
             case 'help':
-                print("AVAILABLE COMMANDS:");
+                print("COMMANDS:");
+                print("  ls        - List directory contents");
+                print("  cat [file]- Display file content");
                 print("  login     - Access existing account");
                 print("  register  - Create new 0xShell identity");
-                print("  clear     - Clear terminal screen");
-                print("  about     - Visit the about page");
-                break;
-            
-            case 'login':
-                state = 'LOGIN_USER';
-                promptText.textContent = "username: ";
+                print("  scan      - Network vulnerability scan");
+                print("  matrix    - Visual data flow");
+                print("  whoami    - Display current user");
+                print("  theme     - Change UI color [red/green]");
+                print("  logout    - End session");
                 break;
 
-            case 'register':
-                state = 'REGISTER_USER';
-                promptText.textContent = "new_user: ";
+            // --- FILE SYSTEM COMMANDS ---
+            case 'ls':
+                const files = Object.keys(fileSystem).join('   ');
+                print(files);
+                break;
+
+            case 'cat':
+                const fileName = args[1];
+                if (!fileName) {
+                    print("Usage: cat [filename]");
+                } else if (fileSystem[fileName]) {
+                    print(fileSystem[fileName]);
+                } else {
+                    print(`cat: ${fileName}: No such file or directory`, true);
+                }
+                break;
+
+            // --- SYSTEM COMMANDS ---
+            case 'sudo':
+                if (currentUser === 'root') {
+                    print("You are already root.");
+                } else {
+                    print(`[sudo] password for ${currentUser}: `);
+                    setTimeout(() => {
+                        print(`${currentUser} is not in the sudoers file. This incident will be reported.`, true);
+                    }, 800);
+                }
+                break;
+            
+            case 'matrix':
+                runMatrixEffect();
+                break;
+
+            case 'scan':
+                runFakeScan();
+                break;
+
+            case 'whoami':
+                print(currentUser);
+                break;
+
+            case 'date':
+                print(new Date().toString());
                 break;
 
             case 'clear':
                 output.innerHTML = '';
                 break;
 
+            case 'theme':
+                changeTheme(args[1]);
+                break;
+
             case 'about':
                 print("Redirecting...");
                 window.location.href = "https://0xshellaboutpage.netlify.app/";
+                break;
+
+            // --- AUTH COMMANDS ---
+            case 'login':
+                if(currentUser !== "guest") print("Already logged in.");
+                else { state = 'LOGIN_USER'; promptText.textContent = "username: "; }
+                break;
+
+            case 'register':
+                if(currentUser !== "guest") print("Logout first.");
+                else { state = 'REGISTER_USER'; promptText.textContent = "new_user: "; }
+                break;
+            
+            case 'logout':
+                performLogout();
                 break;
 
             case '':
@@ -76,118 +160,205 @@ function processCommand(cmd) {
                 print(`bash: ${cmd}: command not found`, true);
         }
     } 
-    // 2. LOGIN SEQUENCE
+    // 2. LOGIN FLOW
     else if (state === 'LOGIN_USER') {
+        tempUser = rawCmd;
         state = 'LOGIN_PASS';
         promptText.textContent = "password: ";
-        input.type = "password"; // Hide password
+        input.type = "password";
     } 
     else if (state === 'LOGIN_PASS') {
-        print("Verifying hash...");
-        setTimeout(() => {
+        const storedPass = localStorage.getItem('0x_' + tempUser);
+        if (storedPass === rawCmd) {
+            currentUser = tempUser;
             print("ACCESS GRANTED.");
-            print("Welcome back, user.");
-            
-            // UNLOCK THE SIDEBAR HERE
-            unlockSidebar();
-            
-            resetShell();
-        }, 800);
+            unlockFeatures();
+        } else {
+            print("ACCESS DENIED: Incorrect credentials.", true);
+        }
+        resetShell();
     }
-    // 3. REGISTER SEQUENCE
+    // 3. REGISTER FLOW
     else if (state === 'REGISTER_USER') {
-        state = 'REGISTER_PASS';
-        promptText.textContent = "new_pass: ";
-        input.type = "password";
+        tempUser = rawCmd;
+        if(localStorage.getItem('0x_' + tempUser)) {
+            print("Error: User already exists.", true);
+            resetShell();
+        } else {
+            state = 'REGISTER_PASS';
+            promptText.textContent = "new_pass: ";
+            input.type = "password";
+        }
     }
     else if (state === 'REGISTER_PASS') {
-        print("Allocating memory blocks...");
-        setTimeout(() => {
-            print("Identity created successfully.");
-            resetShell();
-        }, 800);
+        localStorage.setItem('0x_' + tempUser, rawCmd);
+        print(`Identity '${tempUser}' created. Please login.`);
+        resetShell();
     }
 }
 
+// Reset state to default SHELL
 function resetShell() {
     state = 'SHELL';
-    promptText.textContent = "root@0xshell > ";
+    const displayUser = currentUser === "guest" ? "root" : currentUser;
+    promptText.textContent = `${displayUser}@0xshell > `;
     input.type = "text";
     input.focus();
 }
 
-/* -------------------------------------------------------------------------
-   SIDEBAR & IRC LOGIC
-------------------------------------------------------------------------- */
+/* ==========================================================================
+   FEATURE FUNCTIONS (Visuals & Logic)
+   ========================================================================== */
 
-function unlockSidebar() {
-    // Select the second list item (IRC)
-    const ircTab = document.querySelector('.sidebar li:nth-child(2)'); 
+function changeTheme(color) {
+    let hex = "#0077ff"; // Default Blue
+    if(color === 'red') hex = "#ff3333";
+    if(color === 'green') hex = "#00ff00";
     
-    // Style it to look active
-    ircTab.classList.remove('disabled');
-    ircTab.textContent = "IRC [LIVE]";
-    ircTab.style.cursor = "pointer";
-    ircTab.style.textShadow = "0 0 8px #00ff00"; // Green glow
-    ircTab.style.color = "#00ff00";
-
-    // Add click event to switch screens
-    ircTab.addEventListener('click', () => {
-        terminalScreen.classList.add('hidden'); // Hide terminal
-        ircScreen.classList.remove('hidden');   // Show IRC
-        startChatBots(); // Turn on the bots
-    });
+    document.body.style.color = hex;
+    document.querySelector('.sidebar').style.borderRightColor = hex;
+    input.style.color = hex;
+    
+    // Update links
+    const links = document.querySelectorAll('a');
+    links.forEach(l => l.style.color = hex);
+    
+    print(`Theme updated to ${color || 'blue'}.`);
 }
 
-// Bot Configuration
-const botNames = ['aykin_soft', 'Root_Slayer', 'NullByte', 'System_Daemon', 'V0id'];
+function runFakeScan() {
+    print("Initializing network probe...");
+    input.disabled = true; 
+    
+    let count = 0;
+    const max = 4;
+    
+    const interval = setInterval(() => {
+        count++;
+        const ip = `192.168.0.${Math.floor(Math.random() * 255)}`;
+        const isVuln = Math.random() > 0.7;
+        const status = isVuln ? "[VULNERABLE]" : "[SECURE]";
+        const color = isVuln ? "red" : "green";
+        
+        print(`Scanning ${ip} ... <span style="color:${color}">${status}</span>`, false, true);
+
+        if (count >= max) {
+            clearInterval(interval);
+            print("Scan complete. Targets identified.");
+            input.disabled = false;
+            input.focus();
+        }
+    }, 600);
+}
+
+function runMatrixEffect() {
+    input.disabled = true;
+    print("Initiating Matrix protocol...", false);
+    
+    let rows = 0;
+    const maxRows = 20; 
+    
+    const matrixInterval = setInterval(() => {
+        let line = "";
+        for(let i = 0; i < 50; i++) {
+            line += Math.random() > 0.5 ? "0" : "1 ";
+        }
+        
+        const div = document.createElement('div');
+        div.textContent = line;
+        div.style.color = "#0077ff";
+        div.style.textShadow = "0 0 5px #0077ff";
+        output.appendChild(div);
+        output.scrollTop = output.scrollHeight;
+
+        rows++;
+        if(rows >= maxRows) {
+            clearInterval(matrixInterval);
+            input.disabled = false;
+            input.focus();
+            print("Matrix disconnected.");
+        }
+    }, 100);
+}
+
+/* ==========================================================================
+   SYSTEM LOGIC (Auth, Sidebar, IRC)
+   ========================================================================== */
+
+function unlockFeatures() {
+    // Unlock IRC Button
+    btnIrc.classList.remove('disabled');
+    btnIrc.classList.add('active-link');
+    btnIrc.textContent = "IRC [LIVE]";
+    
+    // Add Click Handler
+    btnIrc.onclick = function() {
+        viewTerminal.classList.remove('view-active');
+        viewTerminal.classList.add('view-hidden');
+        
+        viewIrc.classList.remove('view-hidden');
+        viewIrc.classList.add('view-active');
+        
+        startBots();
+    };
+}
+
+function performLogout() {
+    currentUser = "guest";
+    
+    // Reset IRC Button
+    btnIrc.classList.add('disabled');
+    btnIrc.classList.remove('active-link');
+    btnIrc.textContent = "IRC [OFFLINE]";
+    btnIrc.onclick = null;
+    
+    // Force switch back to Terminal
+    viewIrc.classList.add('view-hidden');
+    viewIrc.classList.remove('view-active');
+    
+    viewTerminal.classList.remove('view-hidden');
+    viewTerminal.classList.add('view-active');
+    
+    print("Session terminated.");
+    resetShell();
+}
+
+/* ==========================================================================
+   IRC BOT LOGIC
+   ========================================================================== */
+
+let botInterval;
+const botNames = ['Neon_Ghost', 'Root_Slayer', 'Aykin_Soft', 'System_Daemon'];
 const botMessages = [
-    "Anyone seen the new CVE for the kernel?",
-    "Scanning subnet 192.168.0.x... found 3 open ports.",
-    "Target is using a weak handshake. Cracking now.",
-    "Did you flush the logs? They are tracing the proxy.",
-    "Uploading payload... 89% complete.",
-    "Alert: Node 4 went offline.",
-    "Just bypass the firewall using port 8080.",
-    "Lol, who left the admin password as 'admin123'?",
-    "Encryption keys generated.",
-    "Signal strength dropping. Rerouting through Tokyo server."
+    "Anyone seen the new CVE?",
+    "Scanning subnet 192.168.0.x...",
+    "Target acquired.",
+    "Did you flush the logs?",
+    "Uploading payload... 89%",
+    "Alert: Node 4 went offline."
 ];
 
-let chatInterval;
-
-function startChatBots() {
-    if (chatInterval) return; // Prevent multiple intervals running at once
-
-    // Initial Welcome Message
-    addChatMessage("System", "Connected to #shadow_ops server.", "user-system");
-
-    // Loop to post messages
-    chatInterval = setInterval(() => {
-        const randomUser = botNames[Math.floor(Math.random() * botNames.length)];
-        const randomMsg = botMessages[Math.floor(Math.random() * botMessages.length)];
+function startBots() {
+    if(botInterval) return; // Prevent double intervals
+    
+    addChat("System", "Connected to #shadow_ops server.", "user-system");
+    
+    botInterval = setInterval(() => {
+        const user = botNames[Math.floor(Math.random() * botNames.length)];
+        const msg = botMessages[Math.floor(Math.random() * botMessages.length)];
         
-        // Color logic
-        let userClass = 'user-bot';
-        if (randomUser === 'Root_Slayer') userClass = 'user-admin';
+        let cls = 'user-bot';
+        if (user === 'Root_Slayer') cls = 'user-admin';
         
-        addChatMessage(randomUser, randomMsg, userClass);
-    }, 3000); // New message every 3 seconds
+        addChat(user, msg, cls);
+    }, 3000);
 }
 
-function addChatMessage(user, text, cssClass) {
-    const time = new Date();
-    const timeStr = `[${time.getHours().toString().padStart(2, '0')}:${time.getMinutes().toString().padStart(2, '0')}]`;
-
-    const line = document.createElement('div');
-    line.className = 'chat-msg';
-    
-    line.innerHTML = `
-        <span class="timestamp">${timeStr}</span>
-        <span class="username ${cssClass}">&lt;${user}&gt;</span>
-        <span class="message">${text}</span>
-    `;
-
-    chatOutput.appendChild(line);
-    chatOutput.scrollTop = chatOutput.scrollHeight; // Auto-scroll to bottom
+function addChat(user, text, cls) {
+    const time = new Date().toLocaleTimeString();
+    const div = document.createElement('div');
+    div.className = 'chat-msg';
+    div.innerHTML = `<span class="timestamp">[${time}]</span><span class="${cls}">&lt;${user}&gt;</span> ${text}`;
+    chatOutput.appendChild(div);
+    chatOutput.scrollTop = chatOutput.scrollHeight;
 }
